@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title></title>
+  <style>
+    :root {
+      --bg: #1c0323; --ink:#e6edf6; --muted:#97a4ba; --accent:#6ee7ff;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#1c131d;color:var(--ink);display:grid;place-items:start center;gap:16px;padding:24px}
+    h1{margin:0;font-size:clamp(18px,3vw,24px);font-weight:800;letter-spacing:.3px}
+    p{margin:.25rem 0;color:var(--muted);font-size:14px}
+    .panel{width:min(92vw,640px);background:#230a29;border:1px solid rgba(117, 57, 132, 0.08);border-radius:14px;padding:14px}
+    .board{position:relative;width:min(92vw,640px);aspect-ratio:1;border-radius:16px;overflow:hidden;background:#0e1525;border:1px dashed rgba(255,255,255,.14)}
+    .grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr)}
+    .tile{border:1px solid rgba(85, 73, 92, 0.06);background-repeat:no-repeat;background-size:300% 300%;cursor:pointer}
+    .tile.sel{box-shadow:inset 0 0 0 3px var(--accent);z-index:1}
+    .overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(32, 5, 44, 0.72);opacity:0;pointer-events:none;transition:opacity .3s ease; padding:16px;           /* breathing room on phones */
+  overflow:auto;}
+    .overlay.show{opacity:1;pointer-events:auto}
+    .letter{
+  font-size: clamp(14px, 4vw, 28px);  /* smaller, phone-friendly range */
+  line-height: 1.4;
+  max-width: min(92vw, 560px);        /* keep lines readable */
+  text-align: center;
+  background: linear-gradient(180deg,#fff,#c9f5ff);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  text-shadow: 0 8px 36px rgba(127,53,162,.28);
+}
+    .btns{display:flex;gap:8px;margin-top:10px}
+    button{appearance:none;border:1px solid rgba(148, 92, 159, 0.1);background:#713c70;color:var(--ink);padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Happy Birthday Körpe</h1>
+    <p></p>
+    <div class="btns">
+      <button id="shuffle">Shuffle</button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <div class="grid" id="grid" aria-live="polite"></div>
+    <div class="overlay" id="overlay" role="dialog" aria-modal="true">
+      <div class="letter" id="letter">iyiki doğdun benim fav kardesım Allah hayatını güzelliklerle donatsın. Mutlu, hayırlı, kolay, huzurlu, sağlıklı, bolluklu bereketli, sevgi dolu, bir ömrün olsun. Iki dünyanda sadece güzelliklerle dolu yazılmış olsun. Zekanla, başarınla, hayallerini gerçekleştirdiğin, ailenin gururu, neşesi ve benim hayattaki kendimden daha çok sevdiğim kişi olmaya devam et. özel olduğunu hissediyorsun çünkü öylesin. Iyiki doğdun, her zaman olmam gereken abla olamasamda en çok ilgiyi sana vermem gerekirken vermesemde, bilki en çok seninle gurur duyup en çok seni seviyorum. Nice mutlu yıllara ma sheyla</div>
+    </div>
+  </div>
+
+  <script>
+    // ===== CONFIG: set your image path & letter here =====
+    const IMAGE_SRC = './my-picture.jpg'; // put your file next to this HTML or adjust the path
+    const SECRET_LETTER = 'iyiki doğdun benim fav kardesım Allah hayatını güzelliklerle donatsın. Mutlu, hayırlı, kolay, huzurlu, sağlıklı, bolluklu bereketli, sevgi dolu, bir ömrün olsun. Iki dünyanda sadece güzelliklerle dolu yazılmış olsun. Zekanla, başarınla, hayallerini gerçekleştirdiğin, ailenin gururu, neşesi ve benim hayattaki kendimden daha çok sevdiğim kişi olmaya devam et. özel olduğunu hissediyorsun çünkü öylesin. Iyiki doğdun, her zaman olmam gereken abla olamasamda en çok ilgiyi sana vermem gerekirken vermesemde, bilki en çok seninle gurur duyup en çok seni seviyorum. Nice mutlu yıllara ma sheyla';            // change to whatever you want revealed
+    // ======================================================
+
+    const gridEl = document.getElementById('grid');
+    const overlayEl = document.getElementById('overlay');
+    const letterEl = document.getElementById('letter');
+    const shuffleBtn = document.getElementById('shuffle');
+
+    const COLS = 3, ROWS = 3; // fixed 3×3
+    const N = COLS * ROWS;
+
+    let tiles = [];         // DOM buttons
+    let order = [];         // which source piece each position shows
+    let solved = [...Array(N).keys()];
+    let selected = null;    // index of selected tile
+
+    // build the board once
+    function build(){
+      letterEl.textContent = SECRET_LETTER;
+      gridEl.innerHTML = '';
+      tiles = [];
+      order = [...solved];
+      // create tiles
+      for (let i = 0; i < N; i++){
+        const b = document.createElement('button');
+        b.className = 'tile';
+        b.type = 'button';
+        b.dataset.pos = i;       // position on board
+        b.dataset.src = i;       // initially solved
+        b.addEventListener('click', onClick);
+        gridEl.appendChild(b);
+        tiles.push(b);
+      }
+      paintAll();
+      shuffle(true);
+      hideOverlay();
+    }
+
+    function onClick(e){
+      const idx = +e.currentTarget.dataset.pos;
+      if (selected == null){
+        selected = idx; tiles[idx].classList.add('sel');
+      } else if (selected === idx){
+        tiles[idx].classList.remove('sel'); selected = null;
+      } else {
+        // swap the src values between the two positions
+        const a = selected, b = idx;
+        const srcA = +tiles[a].dataset.src; const srcB = +tiles[b].dataset.src;
+        tiles[a].dataset.src = srcB; tiles[b].dataset.src = srcA;
+        order[a] = srcB; order[b] = srcA;
+        tiles[a].classList.remove('sel'); selected = null;
+        paint(a); paint(b);
+        checkSolved();
+      }
+    }
+
+    function paintAll(){ for (let i=0;i<N;i++) paint(i); }
+
+    function paint(pos){
+      const el = tiles[pos];
+      const src = +el.dataset.src;
+      const x = src % COLS, y = Math.floor(src / COLS);
+      const px = (x / (COLS - 1)) * 100;
+      const py = (y / (ROWS - 1)) * 100;
+      el.style.backgroundImage = `url(${IMAGE_SRC})`;
+      el.style.backgroundSize = `${COLS*100}% ${ROWS*100}%`;
+      el.style.backgroundPosition = `${px}% ${py}%`;
+    }
+
+    function shuffle(forceDifferent=false){
+      // Fisher-Yates
+      order = [...solved];
+      for (let i = order.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      if (forceDifferent && order.every((v,i)=>v===i)) return shuffle(true);
+      // apply
+      for (let i=0;i<N;i++){ tiles[i].dataset.src = order[i]; paint(i); }
+      hideOverlay();
+    }
+
+    function checkSolved(){
+      for (let i=0;i<N;i++){ if (order[i] !== i) return; }
+      showOverlay();
+    }
+
+    function showOverlay(){ overlayEl.classList.add('show'); }
+    function hideOverlay(){ overlayEl.classList.remove('show'); }
+
+    // hooks
+    shuffleBtn.addEventListener('click', ()=> shuffle(true));
+
+    // boot
+    window.addEventListener('DOMContentLoaded', build);
+  </script>
+</body>
+</html>
